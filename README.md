@@ -2,6 +2,19 @@
 
 This Ansible project automates the installation and configuration of a Kubernetes cluster across multiple machines. The playbook and tasks included will set up the control plane (master node) and worker nodes, generate necessary tokens for joining the cluster, and ensure that all configurations are properly applied.
 
+## Table of Contents
+
+- [Project Structure](#project-structure)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Variables](#variables)
+- [Usage](#usage)
+- [Example](#example)
+- [Troubleshooting](#troubleshooting)
+- [Contributions](#contributions)
+- [License](#license)
+
 ## Project Structure
 
 ```bash
