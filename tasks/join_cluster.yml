@@ -1,0 +1,38 @@
+---
+
+- name: Ensure kubelet service is running and enabled
+  ansible.builtin.service:
+    name: kubelet
+    state: started
+    enabled: true
+
+- name: Retrieve Kubernetes join command from control plane
+  ansible.builtin.copy:
+    src: /tmp/kube_join_command.txt
+    dest: /tmp/
+    mode: '0644'
+
+- name: Remove Kubernetes join command file from control plane
+  become: false
+  ansible.builtin.file:
+    path: /tmp/kube_join_command.txt
+    state: absent
+  delegate_to: localhost
+
+- name: Execute join command to add node to Kubernetes cluster
+  ansible.builtin.shell: |
+    {% if inventory_hostname in groups['control_plane'] %}
+    $(cat /tmp/kube_join_command.txt;echo "--control-plane")
+    {% else %}
+    cat /tmp/kube_join_command.txt | bash
+    {% endif %}
+  environment:
+    KUBECONFIG: /etc/kubernetes/kubelet.conf
+  become: true
+  register: join_output
+  changed_when: join_output.rc != 0
+
+- name: Show output of Kubernetes join command
+  ansible.builtin.debug:
+    var: join_output.stdout_lines
+  when: join_output is defined

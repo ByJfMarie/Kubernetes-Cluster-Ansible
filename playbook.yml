@@ -1,0 +1,48 @@
+---
+
+- name: Install Kubernetes prerequisites on all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: Install initial Kubernetes components
+      ansible.builtin.include_tasks:
+        file: tasks/install_kube.yml
+
+- name: Configure the master node
+  hosts: master_node
+  become: true
+  tasks:
+    - name: Set up Kubernetes master components
+      ansible.builtin.include_tasks:
+        file: tasks/install_kube_master.yml
+
+- name: Generate join token on master node
+  hosts: master_node
+  tasks:
+    - name: Generate token for joining the cluster
+      ansible.builtin.include_tasks:
+        file: tasks/generate_join_token.yml
+
+- name: Add worker nodes to the Kubernetes cluster
+  hosts: worker
+  become: true
+  tasks:
+    - name: Join worker nodes to the cluster
+      ansible.builtin.include_tasks:
+        file: tasks/join_cluster.yml
+  tags: join
+
+- name: Update /etc/hosts on all nodes
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Add /etc/hosts entry for all nodes
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item].local_ip }} {{ item }}"
+        state: present
+        create: true
+        mode: '0644'
+      with_items: "{{ groups['all'] }}"
+      tags: hosts

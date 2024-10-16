@@ -1,0 +1,55 @@
+---
+
+- name: Initialize Kubernetes control plane
+  become: true
+  ansible.builtin.command: >
+    kubeadm init
+      --apiserver-advertise-address={{ api_server_vip }}
+      --pod-network-cidr="{{ pod_network_cidr }}"
+      --upload-certs
+  changed_when: false
+
+- name: Create .kube directory for Kubernetes configuration
+  ansible.builtin.file:
+    path: "{{ home_path }}/.kube"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    state: directory
+    mode: '0700'
+
+- name: Copy Kubernetes admin.conf to user's kube config
+  become: true
+  ansible.builtin.copy:
+    src: "/etc/kubernetes/admin.conf"
+    dest: "{{ home_path }}/.kube/config"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+    remote_src: true
+
+- name: Deploy Calico Tigera Operator
+  ansible.builtin.command: >
+    kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/tigera-operator.yaml
+  changed_when: false
+  become_user: "{{ ansible_user }}"
+
+- name: Download Calico Tigera Custom Resource manifest
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/custom-resources.yaml"
+    dest: "/tmp/custom-resources.yaml"
+    mode: '0644'
+  become_user: "{{ ansible_user }}"
+
+- name: Apply Calico Custom Resources for networking
+  ansible.builtin.command: >
+    kubectl create -f /tmp/custom-resources.yaml
+  changed_when: false
+  become_user: "{{ ansible_user }}"
+
+- name: Taint control-plane nodes to prevent scheduling
+  ansible.builtin.shell: |
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    for node in {{ groups['control_plane'] | join(' ') }}; do
+      kubectl taint nodes $node node-role.kubernetes.io/control-plane=:NoSchedule --overwrite
+    done
+  changed_when: false

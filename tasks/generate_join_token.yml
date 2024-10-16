@@ -1,0 +1,13 @@
+---
+
+- name: Generate a join token on the control plane
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: join_command
+  changed_when: false
+
+- name: Save the join command to a file
+  ansible.builtin.copy:
+    content: "{{ join_command.stdout }}"
+    dest: /tmp/kube_join_command.txt
+    mode: '0644'
+  delegate_to: localhost

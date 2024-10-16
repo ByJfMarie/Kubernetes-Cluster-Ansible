@@ -1,0 +1,124 @@
+---
+
+- name: Update and upgrade apt packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+    cache_valid_time: 3600
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - apt-transport-https
+      - vim
+      - git
+      - wget
+      - software-properties-common
+      - lsb-release
+      - ca-certificates
+    state: present
+    update_cache: true
+
+- name: Disable swap
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+
+- name: Disable SWAP in fstab (Kubeadm requirement)
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+    replace: '# \1'
+
+- name: Load overlay module
+  ansible.builtin.command: modprobe overlay
+  changed_when: false
+
+- name: Load br_netfilter module
+  ansible.builtin.command: modprobe br_netfilter
+  changed_when: false
+
+- name: Ensure overlay and br_netfilter modules are loaded on boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    mode: '0644'
+
+- name: Set required sysctl parameters for Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/kubernetes.conf
+    content: |
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.bridge.bridge-nf-call-iptables = 1
+      net.ipv4.ip_forward = 1
+    mode: '0644'
+
+- name: Reload sysctl to apply changes
+  ansible.builtin.command: sysctl --system
+  changed_when: false
+
+- name: Create the /etc/apt/keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Docker GPG key using curl and save it to /etc/apt/keyrings/docker.gpg
+  shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+
+- name: Add Docker repository to apt sources
+  ansible.builtin.shell: |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+    https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  changed_when: false
+
+- name: Update apt cache and install containerd.io
+  ansible.builtin.apt:
+    name: containerd.io
+    update_cache: true
+    state: present
+
+- name: Generate containerd default config and save to /etc/containerd/config.toml
+  ansible.builtin.shell: |
+    containerd config default | tee /etc/containerd/config.toml
+  changed_when: false
+
+- name: Update SystemdCgroup setting in /etc/containerd/config.toml
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+
+- name: Restart containerd service
+  ansible.builtin.systemd:
+    name: containerd
+    state: restarted
+    enabled: true  # Ensures containerd starts on boot
+
+- name: Create the /etc/apt/keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Kubernetes GPG key and save it to /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  shell: curl -fsSL "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key" | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Add Kubernetes repository to apt sources
+  ansible.builtin.shell: |
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list
+  changed_when: false
+
+- name: Update apt package cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install specific versions of kubeadm, kubelet, and kubectl
+  ansible.builtin.apt:
+    name:
+      - kubeadm={{ kubernetes_version }}.1-1.1
+      - kubelet={{ kubernetes_version }}.1-1.1
+      - kubectl={{ kubernetes_version }}.1-1.1
+    state: present
