@@ -4,7 +4,7 @@
   become: true
   ansible.builtin.command: >
     kubeadm init
-      --apiserver-advertise-address={{ api_server_vip }}
+      --apiserver-advertise-address={{ control_plane_ip }}
       --pod-network-cidr="{{ pod_network_cidr }}"
       --upload-certs
   changed_when: false
